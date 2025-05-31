@@ -6,16 +6,12 @@ tg.expand();
 
 // Variables for shake detection
 let shakeCount = 0;
-let lastAcceleration = { x: 0, y: 0, z: 0 };
-let lastTime = 0;
-let isListeningForShake = false;
-
-// Create a global reference to the motion handler so we can remove it later
-let handleDeviceMotionRef = null;
+let myShakeEvent = null;
+let isShakeListening = false;
 
 // Logging system
 const DEBUG = true;
-const LOG_HISTORY_LIMIT = 100; // Maximum number of log entries to keep
+const LOG_HISTORY_LIMIT = 100;
 let logHistory = [];
 
 // Log levels
@@ -129,6 +125,197 @@ function updateLogsDisplay() {
     }
 }
 
+// Load shake.js library dynamically
+function loadShakeJS() {
+    return new Promise((resolve, reject) => {
+        // Check if shake.js is already loaded
+        if (window.Shake) {
+            logInfo('Shake.js already loaded');
+            resolve();
+            return;
+        }
+        
+        logInfo('Loading shake.js library...');
+        
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/shake.js/1.2.2/shake.min.js';
+        script.onload = () => {
+            logInfo('Shake.js loaded successfully');
+            resolve();
+        };
+        script.onerror = (error) => {
+            logError('Failed to load shake.js', { error: error.message });
+            reject(error);
+        };
+        
+        document.head.appendChild(script);
+    });
+}
+
+// Initialize shake detection with shake.js
+async function initShakeDetection() {
+    const motionStatus = document.getElementById('motion-status');
+    
+    try {
+        // Load shake.js library first
+        await loadShakeJS();
+        
+        if (!window.Shake) {
+            throw new Error('Shake.js library not loaded');
+        }
+        
+        // Check for device motion support
+        if (!window.DeviceMotionEvent) {
+            document.getElementById('shake-count').parentElement.innerHTML = 
+                '<p>Device motion not supported on this device</p>';
+            logWarn('Device motion not supported');
+            return;
+        }
+        
+        // Create shake instance with custom options
+        myShakeEvent = new window.Shake({
+            threshold: 12,    // Shake sensitivity (default: 15)
+            timeout: 800      // Time between shake events (default: 1000ms)
+        });
+        
+        // Set up shake event listener
+        function handleShakeEvent() {
+            shakeCount++;
+            document.getElementById('shake-count').textContent = shakeCount;
+            
+            logInfo('Shake detected!', { 
+                count: shakeCount,
+                timestamp: new Date().toISOString()
+            });
+            
+            // Flash the status indicator for visual feedback
+            motionStatus.textContent = 'Shake!';
+            motionStatus.style.backgroundColor = '#FFC107';
+            
+            setTimeout(() => {
+                motionStatus.textContent = isShakeListening ? 'Active' : 'Inactive';
+                motionStatus.style.backgroundColor = '';
+            }, 500);
+            
+            // Provide haptic feedback if available
+            if (tg.HapticFeedback) {
+                tg.HapticFeedback.notificationOccurred('success');
+            }
+        }
+        
+        // Start shake detection function
+        function startShakeDetection() {
+            if (isShakeListening) return;
+            
+            // Check if permission is required (iOS 13+)
+            if (typeof DeviceMotionEvent !== 'undefined' && 
+                typeof DeviceMotionEvent.requestPermission === 'function') {
+                
+                logInfo('iOS permission required for motion sensors');
+                
+                // Add permission request button
+                const permissionBtn = document.createElement('button');
+                permissionBtn.className = 'button';
+                permissionBtn.textContent = 'Enable Shake Detection';
+                permissionBtn.onclick = function() {
+                    logInfo('Requesting motion permission...');
+                    
+                    DeviceMotionEvent.requestPermission()
+                        .then(response => {
+                            logInfo('Permission response: ' + response);
+                            
+                            if (response === 'granted') {
+                                // Add shake event listener
+                                window.addEventListener('shake', handleShakeEvent, false);
+                                
+                                // Start shake detection
+                                myShakeEvent.start();
+                                isShakeListening = true;
+                                
+                                // Update status
+                                motionStatus.textContent = 'Active';
+                                motionStatus.classList.remove('inactive');
+                                motionStatus.classList.add('active');
+                                
+                                logInfo('Shake detection started with permission');
+                                permissionBtn.remove();
+                            } else {
+                                logWarn('Motion permission denied');
+                                document.getElementById('shake-count').parentElement.innerHTML = 
+                                    '<p>Permission denied for motion sensors</p>';
+                            }
+                        })
+                        .catch(error => {
+                            logError('Motion permission error', { error: error.message });
+                            document.getElementById('debug-output').textContent = 
+                                `Error: ${error.message}`;
+                        });
+                };
+                
+                // Insert the button
+                const shakeBox = document.getElementById('shake-count').parentElement;
+                shakeBox.insertBefore(permissionBtn, shakeBox.firstChild);
+                
+            } else {
+                // No permission needed, start immediately
+                logInfo('Starting shake detection without permission request');
+                
+                // Add shake event listener
+                window.addEventListener('shake', handleShakeEvent, false);
+                
+                // Start shake detection
+                myShakeEvent.start();
+                isShakeListening = true;
+                
+                // Update status
+                motionStatus.textContent = 'Active';
+                motionStatus.classList.remove('inactive');
+                motionStatus.classList.add('active');
+                
+                logInfo('Shake detection started');
+            }
+        }
+        
+        // Start shake detection
+        startShakeDetection();
+        
+    } catch (error) {
+        logError('Error initializing shake detection', { error: error.message });
+        console.error('Error initializing shake detection:', error);
+        
+        // Show error in UI
+        document.getElementById('debug-output').textContent = 
+            `Error: ${error.message}`;
+            
+        // Update status indicator
+        motionStatus.textContent = 'Error';
+        motionStatus.classList.remove('active');
+        motionStatus.classList.add('inactive');
+    }
+}
+
+// Function to stop shake detection
+function stopShakeDetection() {
+    if (myShakeEvent && isShakeListening) {
+        // Remove event listener
+        window.removeEventListener('shake', handleShakeEvent, false);
+        
+        // Stop shake detection
+        myShakeEvent.stop();
+        isShakeListening = false;
+        
+        // Update status
+        const motionStatus = document.getElementById('motion-status');
+        if (motionStatus) {
+            motionStatus.textContent = 'Inactive';
+            motionStatus.classList.remove('active');
+            motionStatus.classList.add('inactive');
+        }
+        
+        logInfo('Shake detection stopped');
+    }
+}
+
 // Main function that runs when the document is loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize the UI based on Telegram theme
@@ -146,7 +333,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up device orientation tracking
     initOrientationTracking();
     
-    // Set up shake detection
+    // Set up shake detection with shake.js
     initShakeDetection();
     
     // Initial log entry
@@ -233,6 +420,26 @@ function setupEventListeners() {
         updateLogsDisplay();
         logInfo('Logs cleared');
     });
+    
+    // Add toggle shake detection button
+    const toggleShakeBtn = document.createElement('button');
+    toggleShakeBtn.className = 'button secondary';
+    toggleShakeBtn.textContent = 'Toggle Shake Detection';
+    toggleShakeBtn.onclick = function() {
+        if (isShakeListening) {
+            stopShakeDetection();
+            this.textContent = 'Start Shake Detection';
+        } else {
+            initShakeDetection();
+            this.textContent = 'Stop Shake Detection';
+        }
+    };
+    
+    // Add toggle button to the shake section
+    const resetButton = document.getElementById('reset-shake');
+    if (resetButton && resetButton.parentElement) {
+        resetButton.parentElement.appendChild(toggleShakeBtn);
+    }
 }
 
 // Function to initialize orientation tracking
@@ -311,187 +518,11 @@ function initOrientationTracking() {
     window.updateOrientationDisplay = updateOrientationDisplay;
 }
 
-// Function to initialize shake detection
-function initShakeDetection() {
-    const motionStatus = document.getElementById('motion-status');
-    
-    if (!window.DeviceMotionEvent) {
-        document.getElementById('shake-count').parentElement.innerHTML = 
-            '<p>Device motion not supported on this device</p>';
-        logDebug('Device motion not supported');
-        return;
-    }
-    
-    // Shake detection threshold and cooldown
-    // Lower threshold to make it more sensitive for pure acceleration data
-    const SHAKE_THRESHOLD = 0.15; // Lowered from 10 to 0.8 for pure acceleration
-    const SHAKE_COOLDOWN = 800; // Reduced cooldown between shakes (was 1000ms)
-    
-    // Start listening for device motion
-    function startShakeDetection() {
-        if (isListeningForShake) return;
-        
-        // Create the motion handler function and store a reference to it
-        handleDeviceMotionRef = function(event) {
-            handleDeviceMotion(event);
-        };
-        
-        isListeningForShake = true;
-        window.addEventListener('devicemotion', handleDeviceMotionRef);
-        
-        // Update status indicator
-        motionStatus.textContent = 'Active';
-        motionStatus.classList.remove('inactive');
-        motionStatus.classList.add('active');
-        
-        logInfo('Shake detection started');
-    }
-    
-    // Handle device motion events
-    function handleDeviceMotion(event) {
-        // Try to use pure acceleration data first, fallback to accelerationIncludingGravity
-        let current = null;
-        let accelerationType = '';
-        
-        if (event.acceleration && (event.acceleration.x !== null || event.acceleration.y !== null || event.acceleration.z !== null)) {
-            current = event.acceleration;
-            accelerationType = 'pure';
-        } else if (event.accelerationIncludingGravity) {
-            current = event.accelerationIncludingGravity;
-            accelerationType = 'withGravity';
-        }
-        
-        // Store the acceleration type for use in shake detection
-        window.lastAccelerationType = accelerationType;
-        
-        const currentTime = new Date().getTime();
-        
-        // Check if we have valid acceleration data
-        if (!current) {
-            // No need to log when acceleration data is unavailable
-            return;
-        }
-        
-        if ((currentTime - lastTime) < 50) return; // Limit sampling rate (was 100ms)
-        
-        // Calculate change in acceleration
-        const deltaX = Math.abs((lastAcceleration.x || 0) - (current.x || 0));
-        const deltaY = Math.abs((lastAcceleration.y || 0) - (current.y || 0));
-        const deltaZ = Math.abs((lastAcceleration.z || 0) - (current.z || 0));
-        
-        // Update last acceleration
-        lastAcceleration = {
-            x: current.x || 0,
-            y: current.y || 0,
-            z: current.z || 0
-        };
-        
-        // Calculate magnitude of change
-        const totalAcceleration = Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
-        
-        // Removed periodic motion logging to reduce noise
-        
-        // Check if acceleration exceeds threshold
-        if (totalAcceleration > SHAKE_THRESHOLD) {
-            detectShake(totalAcceleration, accelerationType, current);
-        }
-        
-        lastTime = currentTime;
-    }
-    
-    // Handle shake detection
-    function detectShake(magnitude, accelType, currentAcceleration) {
-        const now = new Date().getTime();
-        if (now - lastTime < SHAKE_COOLDOWN) return;
-        
-        shakeCount++;
-        document.getElementById('shake-count').textContent = shakeCount;
-        
-        // Concise logging with only essential info when a shake is detected
-        logInfo(`Shake detected! Acceleration: ${magnitude.toFixed(2)}, Threshold: ${SHAKE_THRESHOLD}`, { 
-            count: shakeCount
-        });
-        
-        // Flash the status indicator for visual feedback
-        motionStatus.textContent = 'Shake!';
-        motionStatus.style.backgroundColor = '#FFC107';
-        
-        setTimeout(() => {
-            motionStatus.textContent = 'Active';
-            motionStatus.style.backgroundColor = '';
-        }, 500);
-        
-        // Optional: Provide haptic feedback if available
-        if (tg.HapticFeedback) {
-            tg.HapticFeedback.notificationOccurred('success');
-        }
-    }
-    
-    // Try to start shake detection
-    try {
-        // Request permission for DeviceMotionEvent if needed (iOS 13+)
-        if (typeof DeviceMotionEvent !== 'undefined' && 
-            typeof DeviceMotionEvent.requestPermission === 'function') {
-            
-            logInfo('iOS permission required for motion sensors');
-            
-            // Add a button to request permission
-            const permissionBtn = document.createElement('button');
-            permissionBtn.className = 'button';
-            permissionBtn.textContent = 'Enable Shake Detection';
-            permissionBtn.onclick = function() {
-                logInfo('Requesting motion permission');
-                
-                DeviceMotionEvent.requestPermission()
-                    .then(response => {
-                        logInfo('Permission response: ' + response);
-                        
-                        if (response === 'granted') {
-                            startShakeDetection();
-                            permissionBtn.remove();
-                        } else {
-                            document.getElementById('shake-count').parentElement.innerHTML = 
-                                '<p>Permission denied for motion sensors</p>';
-                        }
-                    })
-                    .catch(error => {
-                        logError('Motion permission error: ' + error.message);
-                        console.error('Motion permission error:', error);
-                        
-                        // Show error in UI
-                        document.getElementById('debug-output').textContent = 
-                            `Error: ${error.message}`;
-                    });
-            };
-            
-            // Insert the button at the top of the shake detection box
-            const shakeBox = document.getElementById('shake-count').parentElement;
-            shakeBox.insertBefore(permissionBtn, shakeBox.firstChild);
-            
-        } else {
-            // No permission needed, start immediately
-            logInfo('No permission needed for motion sensors');
-            startShakeDetection();
-        }
-    } catch (e) {
-        logError('Error initializing shake detection: ' + e.message);
-        console.error('Error initializing shake detection:', e);
-        
-        // Show error in UI
-        document.getElementById('debug-output').textContent = 
-            `Error: ${e.message}`;
-            
-        // Update status indicator
-        motionStatus.textContent = 'Error';
-        motionStatus.classList.remove('active');
-        motionStatus.classList.add('inactive');
-    }
-}
-
 // Function to reset shake count
 function resetShakeCount() {
     shakeCount = 0;
     document.getElementById('shake-count').textContent = '0';
+    logInfo('Shake count reset');
 }
 
 // Handle back button if needed
@@ -503,20 +534,8 @@ tg.onEvent('backButtonClicked', function() {
 
 // Cleanup function when app is closed or hidden
 function cleanupSensors() {
-    if (isListeningForShake && handleDeviceMotionRef) {
-        window.removeEventListener('devicemotion', handleDeviceMotionRef);
-        isListeningForShake = false;
-        
-        // Update status indicator
-        const motionStatus = document.getElementById('motion-status');
-        if (motionStatus) {
-            motionStatus.textContent = 'Inactive';
-            motionStatus.classList.remove('active');
-            motionStatus.classList.add('inactive');
-        }
-        
-        logInfo('Motion detection stopped');
-    }
+    // Stop shake detection
+    stopShakeDetection();
     
     // Remove orientation listeners
     window.removeEventListener('resize', window.updateOrientationDisplay);
@@ -543,7 +562,7 @@ document.addEventListener('visibilitychange', function() {
         cleanupSensors();
     } else if (document.visibilityState === 'visible') {
         // Reinitialize sensors if needed
-        if (!isListeningForShake) {
+        if (!isShakeListening) {
             initShakeDetection();
         }
         
@@ -557,40 +576,29 @@ document.addEventListener('visibilitychange', function() {
 // Error handling
 window.addEventListener('error', function(e) {
     console.error('JavaScript Error:', e.message);
-    
-    // Show error in UI
-    logDebug('Error occurred', { message: e.message });
-    
-    // Optionally log errors to your server
+    logError('JavaScript error occurred', { 
+        message: e.message, 
+        filename: e.filename, 
+        lineno: e.lineno 
+    });
 });
 
-// Add a manual test button for shake if needed
+// Add test buttons when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    // Create test button
+    // Create manual test shake button
     const testButton = document.createElement('button');
     testButton.className = 'button secondary small';
     testButton.textContent = 'Test Shake';
     testButton.style.marginTop = '10px';
     testButton.onclick = function() {
-        shakeCount++;
-        document.getElementById('shake-count').textContent = shakeCount;
+        // Trigger a manual shake event
+        const shakeEvent = new Event('shake');
+        window.dispatchEvent(shakeEvent);
         
-        logInfo('Manual shake triggered', { count: shakeCount });
-        
-        // Flash the status indicator
-        const motionStatus = document.getElementById('motion-status');
-        if (motionStatus) {
-            motionStatus.textContent = 'Shake!';
-            motionStatus.style.backgroundColor = '#FFC107';
-            
-            setTimeout(() => {
-                motionStatus.textContent = isListeningForShake ? 'Active' : 'Inactive';
-                motionStatus.style.backgroundColor = '';
-            }, 500);
-        }
+        logInfo('Manual shake triggered');
     };
     
-    // Add the button after the reset button
+    // Add the test button
     const resetButton = document.getElementById('reset-shake');
     if (resetButton && resetButton.parentElement) {
         resetButton.parentElement.appendChild(testButton);
@@ -638,7 +646,7 @@ document.addEventListener('DOMContentLoaded', function() {
         logLevelsContainer.appendChild(logButton);
     });
     
-    // Add log test buttons to the logs header
+    // Add log test buttons to the logs controls
     const logsControls = document.querySelector('.logs-controls');
     if (logsControls) {
         logsControls.appendChild(logLevelsContainer);
