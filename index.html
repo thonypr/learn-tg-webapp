@@ -18,8 +18,25 @@
             </div>
             <div class="content">
                 <p>Welcome to your Telegram Web App!</p>
-                <button id="main-button" class="button">Main Button</button>
-                <button id="close-app" class="button secondary">Close App</button>
+                
+                <div class="sensor-container">
+                    <div class="sensor-box">
+                        <h3>Device Orientation</h3>
+                        <div id="orientation-display">Loading...</div>
+                    </div>
+                    
+                    <div class="sensor-box">
+                        <h3>Shake Detection</h3>
+                        <div id="shake-count">0</div>
+                        <p>shakes detected</p>
+                        <button id="reset-shake" class="button secondary small">Reset Count</button>
+                    </div>
+                </div>
+                
+                <div class="button-container">
+                    <button id="main-button" class="button">Main Button</button>
+                    <button id="close-app" class="button secondary">Close App</button>
+                </div>
             </div>
         </div>
     </div>
