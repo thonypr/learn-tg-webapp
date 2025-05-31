@@ -23,13 +23,31 @@
                     <div class="sensor-box">
                         <h3>Device Orientation</h3>
                         <div id="orientation-display">Loading...</div>
+                        <div id="orientation-status" class="status-indicator inactive">Inactive</div>
                     </div>
                     
                     <div class="sensor-box">
                         <h3>Shake Detection</h3>
                         <div id="shake-count">0</div>
                         <p>shakes detected</p>
+                        <div id="motion-status" class="status-indicator inactive">Inactive</div>
+                        <div id="debug-output" class="debug-info"></div>
                         <button id="reset-shake" class="button secondary small">Reset Count</button>
+                    </div>
+                </div>
+                
+                <div class="logs-container">
+                    <div class="logs-header">
+                        <h3>Live Logs</h3>
+                        <div class="logs-controls">
+                            <label>
+                                <input type="checkbox" id="logs-autoscroll" checked> Auto-scroll
+                            </label>
+                            <button id="clear-logs" class="button secondary small">Clear</button>
+                        </div>
+                    </div>
+                    <div id="logs-area" class="logs-area">
+                        <div id="logs-content"></div>
                     </div>
                 </div>
                 

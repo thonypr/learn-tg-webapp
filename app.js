@@ -10,6 +10,125 @@ let lastAcceleration = { x: 0, y: 0, z: 0 };
 let lastTime = 0;
 let isListeningForShake = false;
 
+// Create a global reference to the motion handler so we can remove it later
+let handleDeviceMotionRef = null;
+
+// Logging system
+const DEBUG = true;
+const LOG_HISTORY_LIMIT = 100; // Maximum number of log entries to keep
+let logHistory = [];
+
+// Log levels
+const LogLevel = {
+    INFO: 'info',
+    DEBUG: 'debug',
+    WARN: 'warn',
+    ERROR: 'error'
+};
+
+// Main logging function
+function log(level, message, data) {
+    if (!DEBUG && level === LogLevel.DEBUG) return;
+    
+    const timestamp = new Date().toISOString().substr(11, 8);
+    const dataStr = data ? ': ' + JSON.stringify(data) : '';
+    const logMessage = `${message}${dataStr}`;
+    
+    // Add to log history
+    logHistory.push({
+        timestamp,
+        level,
+        message: logMessage
+    });
+    
+    // Trim history if needed
+    if (logHistory.length > LOG_HISTORY_LIMIT) {
+        logHistory = logHistory.slice(-LOG_HISTORY_LIMIT);
+    }
+    
+    // Update the logs display
+    updateLogsDisplay();
+    
+    // Also update the single line debug output
+    const debugOutput = document.getElementById('debug-output');
+    if (debugOutput) {
+        debugOutput.textContent = `[${timestamp}] ${message}${dataStr}`;
+    }
+    
+    // Log to console with appropriate level
+    switch (level) {
+        case LogLevel.ERROR:
+            console.error(message, data);
+            break;
+        case LogLevel.WARN:
+            console.warn(message, data);
+            break;
+        case LogLevel.INFO:
+            console.info(message, data);
+            break;
+        default:
+            console.log(message, data);
+    }
+}
+
+// Helper functions for different log levels
+function logInfo(message, data) {
+    log(LogLevel.INFO, message, data);
+}
+
+function logDebug(message, data) {
+    log(LogLevel.DEBUG, message, data);
+}
+
+function logWarn(message, data) {
+    log(LogLevel.WARN, message, data);
+}
+
+function logError(message, data) {
+    log(LogLevel.ERROR, message, data);
+}
+
+// Function to update the logs display
+function updateLogsDisplay() {
+    const logsContent = document.getElementById('logs-content');
+    if (!logsContent) return;
+    
+    // Clear existing content
+    logsContent.innerHTML = '';
+    
+    // Add each log entry
+    logHistory.forEach(entry => {
+        const logEntry = document.createElement('div');
+        logEntry.className = 'log-entry';
+        
+        const timestamp = document.createElement('span');
+        timestamp.className = 'log-timestamp';
+        timestamp.textContent = entry.timestamp;
+        
+        const level = document.createElement('span');
+        level.className = `log-level ${entry.level}`;
+        level.textContent = entry.level.toUpperCase();
+        
+        const message = document.createElement('span');
+        message.className = 'log-message';
+        message.textContent = entry.message;
+        
+        logEntry.appendChild(timestamp);
+        logEntry.appendChild(level);
+        logEntry.appendChild(message);
+        
+        logsContent.appendChild(logEntry);
+    });
+    
+    // Auto-scroll if enabled
+    const logsArea = document.getElementById('logs-area');
+    const autoScroll = document.getElementById('logs-autoscroll');
+    
+    if (logsArea && autoScroll && autoScroll.checked) {
+        logsArea.scrollTop = logsArea.scrollHeight;
+    }
+}
+
 // Main function that runs when the document is loaded
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize the UI based on Telegram theme
@@ -29,6 +148,13 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Set up shake detection
     initShakeDetection();
+    
+    // Initial log entry
+    logInfo('Application initialized', { 
+        timestamp: new Date().toISOString(),
+        platform: navigator.platform,
+        userAgent: navigator.userAgent
+    });
     
     // Let Telegram know the app is ready
     tg.ready();
@@ -100,17 +226,65 @@ function setupEventListeners() {
     document.getElementById('reset-shake').addEventListener('click', function() {
         resetShakeCount();
     });
+    
+    // Handle clear logs button
+    document.getElementById('clear-logs').addEventListener('click', function() {
+        logHistory = [];
+        updateLogsDisplay();
+        logInfo('Logs cleared');
+    });
 }
 
 // Function to initialize orientation tracking
 function initOrientationTracking() {
     const orientationDisplay = document.getElementById('orientation-display');
+    const orientationStatus = document.getElementById('orientation-status');
     
-    // Update orientation display based on viewport dimensions
+    // Update orientation display based on multiple sources
     function updateOrientationDisplay() {
-        const isPortrait = tg.viewportHeight > tg.viewportWidth;
-        orientationDisplay.textContent = isPortrait ? 'Portrait' : 'Landscape';
-        orientationDisplay.dataset.orientation = isPortrait ? 'portrait' : 'landscape';
+        let orientationType = 'unknown';
+        let source = 'none';
+        
+        // Try Screen Orientation API first
+        if (window.screen && window.screen.orientation) {
+            const orientation = window.screen.orientation.type;
+            if (orientation.includes('portrait')) {
+                orientationType = 'Portrait';
+                source = 'Screen Orientation API';
+            } else if (orientation.includes('landscape')) {
+                orientationType = 'Landscape';
+                source = 'Screen Orientation API';
+            }
+        } 
+        // Then try Telegram viewport
+        else if (tg.viewportHeight && tg.viewportWidth) {
+            const isPortrait = tg.viewportHeight > tg.viewportWidth;
+            orientationType = isPortrait ? 'Portrait' : 'Landscape';
+            source = 'Telegram viewport';
+        }
+        // Fallback to window dimensions
+        else {
+            const isPortrait = window.innerHeight > window.innerWidth;
+            orientationType = isPortrait ? 'Portrait' : 'Landscape';
+            source = 'Window dimensions';
+        }
+        
+        orientationDisplay.textContent = `${orientationType} (via ${source})`;
+        orientationDisplay.dataset.orientation = orientationType.toLowerCase();
+        
+        // Update status indicator
+        if (source !== 'none') {
+            orientationStatus.textContent = 'Active';
+            orientationStatus.classList.remove('inactive');
+            orientationStatus.classList.add('active');
+        } else {
+            orientationStatus.textContent = 'Inactive';
+            orientationStatus.classList.remove('active');
+            orientationStatus.classList.add('inactive');
+        }
+        
+        logDebug('Orientation updated', { type: orientationType, source, 
+            viewportHeight: tg.viewportHeight, viewportWidth: tg.viewportWidth });
     }
     
     // Initial update
@@ -118,33 +292,59 @@ function initOrientationTracking() {
     
     // Listen for viewport changes from Telegram
     tg.onEvent('viewportChanged', function() {
-        console.log('Viewport changed', tg.viewportHeight, tg.viewportStableHeight);
+        logDebug('Viewport changed', { height: tg.viewportHeight, stableHeight: tg.viewportStableHeight });
         updateOrientationDisplay();
     });
     
+    // Listen for orientation change if available
+    if (window.screen && window.screen.orientation) {
+        window.screen.orientation.addEventListener('change', function() {
+            logDebug('Screen orientation changed', { type: window.screen.orientation.type });
+            updateOrientationDisplay();
+        });
+    }
+    
     // Also listen for window resize as a fallback
     window.addEventListener('resize', updateOrientationDisplay);
+    
+    // Expose the update function globally so we can call it from other places
+    window.updateOrientationDisplay = updateOrientationDisplay;
 }
 
 // Function to initialize shake detection
 function initShakeDetection() {
+    const motionStatus = document.getElementById('motion-status');
+    
     if (!window.DeviceMotionEvent) {
         document.getElementById('shake-count').parentElement.innerHTML = 
             '<p>Device motion not supported on this device</p>';
+        logDebug('Device motion not supported');
         return;
     }
     
     // Shake detection threshold and cooldown
-    const SHAKE_THRESHOLD = 15;
-    const SHAKE_COOLDOWN = 1000; // 1 second cooldown between shakes
+    // Lower threshold to make it more sensitive (was 15)
+    const SHAKE_THRESHOLD = 10;
+    const SHAKE_COOLDOWN = 800; // Reduced cooldown between shakes (was 1000ms)
     
     // Start listening for device motion
     function startShakeDetection() {
         if (isListeningForShake) return;
         
+        // Create the motion handler function and store a reference to it
+        handleDeviceMotionRef = function(event) {
+            handleDeviceMotion(event);
+        };
+        
         isListeningForShake = true;
-        window.addEventListener('devicemotion', handleDeviceMotion);
-        console.log('Shake detection started');
+        window.addEventListener('devicemotion', handleDeviceMotionRef);
+        
+        // Update status indicator
+        motionStatus.textContent = 'Active';
+        motionStatus.classList.remove('inactive');
+        motionStatus.classList.add('active');
+        
+        logDebug('Shake detection started');
     }
     
     // Handle device motion events
@@ -152,40 +352,72 @@ function initShakeDetection() {
         const current = event.accelerationIncludingGravity;
         const currentTime = new Date().getTime();
         
-        if (!current || (currentTime - lastTime) < 100) return; // Limit sampling rate
+        // Debug display for motion values
+        if (current) {
+            // Only log occasionally to avoid overwhelming the UI
+            if (currentTime % 1000 < 100) { // Log roughly every second
+                logDebug('Motion detected', {
+                    x: current.x ? current.x.toFixed(2) : 'null',
+                    y: current.y ? current.y.toFixed(2) : 'null',
+                    z: current.z ? current.z.toFixed(2) : 'null'
+                });
+            }
+        } else {
+            logDebug('No acceleration data');
+            return;
+        }
         
-        const deltaTime = currentTime - lastTime;
-        lastTime = currentTime;
+        if ((currentTime - lastTime) < 50) return; // Limit sampling rate (was 100ms)
         
         // Calculate change in acceleration
-        const deltaX = Math.abs(lastAcceleration.x - current.x);
-        const deltaY = Math.abs(lastAcceleration.y - current.y);
-        const deltaZ = Math.abs(lastAcceleration.z - current.z);
+        const deltaX = Math.abs((lastAcceleration.x || 0) - (current.x || 0));
+        const deltaY = Math.abs((lastAcceleration.y || 0) - (current.y || 0));
+        const deltaZ = Math.abs((lastAcceleration.z || 0) - (current.z || 0));
         
         // Update last acceleration
         lastAcceleration = {
-            x: current.x,
-            y: current.y,
-            z: current.z
+            x: current.x || 0,
+            y: current.y || 0,
+            z: current.z || 0
         };
         
         // Calculate magnitude of change
         const totalAcceleration = Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
         
+        // Log significant motion for debugging
+        if (totalAcceleration > SHAKE_THRESHOLD * 0.5) {
+            logDebug('Significant motion', { 
+                total: totalAcceleration.toFixed(2), 
+                threshold: SHAKE_THRESHOLD 
+            });
+        }
+        
         // Check if acceleration exceeds threshold
         if (totalAcceleration > SHAKE_THRESHOLD) {
-            detectShake();
+            detectShake(totalAcceleration);
         }
+        
+        lastTime = currentTime;
     }
     
     // Handle shake detection
-    function detectShake() {
+    function detectShake(magnitude) {
         const now = new Date().getTime();
         if (now - lastTime < SHAKE_COOLDOWN) return;
         
         shakeCount++;
         document.getElementById('shake-count').textContent = shakeCount;
-        lastTime = now;
+        
+        logDebug('Shake detected!', { count: shakeCount, magnitude: magnitude.toFixed(2) });
+        
+        // Flash the status indicator for visual feedback
+        motionStatus.textContent = 'Shake!';
+        motionStatus.style.backgroundColor = '#FFC107';
+        
+        setTimeout(() => {
+            motionStatus.textContent = 'Active';
+            motionStatus.style.backgroundColor = '';
+        }, 500);
         
         // Optional: Provide haptic feedback if available
         if (tg.HapticFeedback) {
@@ -199,13 +431,19 @@ function initShakeDetection() {
         if (typeof DeviceMotionEvent !== 'undefined' && 
             typeof DeviceMotionEvent.requestPermission === 'function') {
             
+            logDebug('iOS permission required for motion sensors');
+            
             // Add a button to request permission
             const permissionBtn = document.createElement('button');
             permissionBtn.className = 'button';
             permissionBtn.textContent = 'Enable Shake Detection';
             permissionBtn.onclick = function() {
+                logDebug('Requesting motion permission');
+                
                 DeviceMotionEvent.requestPermission()
                     .then(response => {
+                        logDebug('Permission response', { response });
+                        
                         if (response === 'granted') {
                             startShakeDetection();
                             permissionBtn.remove();
@@ -214,18 +452,37 @@ function initShakeDetection() {
                                 '<p>Permission denied for motion sensors</p>';
                         }
                     })
-                    .catch(console.error);
+                    .catch(error => {
+                        logDebug('Permission error', { message: error.message });
+                        console.error('Motion permission error:', error);
+                        
+                        // Show error in UI
+                        document.getElementById('debug-output').textContent = 
+                            `Error: ${error.message}`;
+                    });
             };
             
-            document.getElementById('shake-count').parentElement.prepend(permissionBtn);
+            // Insert the button at the top of the shake detection box
+            const shakeBox = document.getElementById('shake-count').parentElement;
+            shakeBox.insertBefore(permissionBtn, shakeBox.firstChild);
+            
         } else {
             // No permission needed, start immediately
+            logDebug('No permission needed for motion sensors');
             startShakeDetection();
         }
     } catch (e) {
+        logDebug('Error initializing shake detection', { message: e.message });
         console.error('Error initializing shake detection:', e);
-        document.getElementById('shake-count').parentElement.innerHTML = 
-            '<p>Error initializing motion sensors</p>';
+        
+        // Show error in UI
+        document.getElementById('debug-output').textContent = 
+            `Error: ${e.message}`;
+            
+        // Update status indicator
+        motionStatus.textContent = 'Error';
+        motionStatus.classList.remove('active');
+        motionStatus.classList.add('inactive');
     }
 }
 
@@ -244,16 +501,42 @@ tg.onEvent('backButtonClicked', function() {
 
 // Cleanup function when app is closed or hidden
 function cleanupSensors() {
-    if (isListeningForShake) {
-        window.removeEventListener('devicemotion', handleDeviceMotion);
+    if (isListeningForShake && handleDeviceMotionRef) {
+        window.removeEventListener('devicemotion', handleDeviceMotionRef);
         isListeningForShake = false;
+        
+        // Update status indicator
+        const motionStatus = document.getElementById('motion-status');
+        if (motionStatus) {
+            motionStatus.textContent = 'Inactive';
+            motionStatus.classList.remove('active');
+            motionStatus.classList.add('inactive');
+        }
+        
+        logDebug('Motion detection stopped');
     }
     
-    window.removeEventListener('resize', updateOrientationDisplay);
+    // Remove orientation listeners
+    window.removeEventListener('resize', window.updateOrientationDisplay);
+    if (window.screen && window.screen.orientation) {
+        window.screen.orientation.removeEventListener('change', window.updateOrientationDisplay);
+    }
+    
+    // Update orientation status
+    const orientationStatus = document.getElementById('orientation-status');
+    if (orientationStatus) {
+        orientationStatus.textContent = 'Inactive';
+        orientationStatus.classList.remove('active');
+        orientationStatus.classList.add('inactive');
+    }
+    
+    logDebug('Sensors cleaned up');
 }
 
 // Listen for app visibility changes
 document.addEventListener('visibilitychange', function() {
+    logDebug('Visibility changed', { state: document.visibilityState });
+    
     if (document.visibilityState === 'hidden') {
         cleanupSensors();
     } else if (document.visibilityState === 'visible') {
@@ -261,12 +544,102 @@ document.addEventListener('visibilitychange', function() {
         if (!isListeningForShake) {
             initShakeDetection();
         }
+        
+        // Update orientation display
+        if (window.updateOrientationDisplay) {
+            window.updateOrientationDisplay();
+        }
     }
 });
 
 // Error handling
 window.addEventListener('error', function(e) {
     console.error('JavaScript Error:', e.message);
+    
+    // Show error in UI
+    logDebug('Error occurred', { message: e.message });
+    
     // Optionally log errors to your server
+});
+
+// Add a manual test button for shake if needed
+document.addEventListener('DOMContentLoaded', function() {
+    // Create test button
+    const testButton = document.createElement('button');
+    testButton.className = 'button secondary small';
+    testButton.textContent = 'Test Shake';
+    testButton.style.marginTop = '10px';
+    testButton.onclick = function() {
+        shakeCount++;
+        document.getElementById('shake-count').textContent = shakeCount;
+        
+        logInfo('Manual shake triggered', { count: shakeCount });
+        
+        // Flash the status indicator
+        const motionStatus = document.getElementById('motion-status');
+        if (motionStatus) {
+            motionStatus.textContent = 'Shake!';
+            motionStatus.style.backgroundColor = '#FFC107';
+            
+            setTimeout(() => {
+                motionStatus.textContent = isListeningForShake ? 'Active' : 'Inactive';
+                motionStatus.style.backgroundColor = '';
+            }, 500);
+        }
+    };
+    
+    // Add the button after the reset button
+    const resetButton = document.getElementById('reset-shake');
+    if (resetButton && resetButton.parentElement) {
+        resetButton.parentElement.appendChild(testButton);
+    }
+    
+    // Add test log buttons for different log levels
+    const logLevelsContainer = document.createElement('div');
+    logLevelsContainer.style.display = 'flex';
+    logLevelsContainer.style.gap = '5px';
+    logLevelsContainer.style.marginTop = '10px';
+    
+    const logLevels = [
+        { level: 'info', color: '#2196F3' },
+        { level: 'debug', color: '#4CAF50' },
+        { level: 'warn', color: '#FF9800' },
+        { level: 'error', color: '#F44336' }
+    ];
+    
+    logLevels.forEach(({ level, color }) => {
+        const logButton = document.createElement('button');
+        logButton.className = 'button secondary small';
+        logButton.textContent = `Test ${level}`;
+        logButton.style.backgroundColor = color;
+        logButton.style.color = 'white';
+        logButton.style.padding = '4px 8px';
+        logButton.style.fontSize = '12px';
+        
+        logButton.onclick = function() {
+            switch (level) {
+                case 'info':
+                    logInfo(`Test ${level} message`, { timestamp: new Date().getTime() });
+                    break;
+                case 'debug':
+                    logDebug(`Test ${level} message`, { timestamp: new Date().getTime() });
+                    break;
+                case 'warn':
+                    logWarn(`Test ${level} message`, { timestamp: new Date().getTime() });
+                    break;
+                case 'error':
+                    logError(`Test ${level} message`, { timestamp: new Date().getTime() });
+                    break;
+            }
+        };
+        
+        logLevelsContainer.appendChild(logButton);
+    });
+    
+    // Add log test buttons to the logs header
+    const logsControls = document.querySelector('.logs-controls');
+    if (logsControls) {
+        logsControls.appendChild(logLevelsContainer);
+    }
 });
 
