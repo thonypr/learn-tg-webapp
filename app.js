@@ -323,8 +323,8 @@ function initShakeDetection() {
     }
     
     // Shake detection threshold and cooldown
-    // Lower threshold to make it more sensitive (was 15)
-    const SHAKE_THRESHOLD = 10;
+    // Lower threshold to make it more sensitive for pure acceleration data
+    const SHAKE_THRESHOLD = 0.8; // Lowered from 10 to 0.8 for pure acceleration
     const SHAKE_COOLDOWN = 800; // Reduced cooldown between shakes (was 1000ms)
     
     // Start listening for device motion
@@ -349,7 +349,18 @@ function initShakeDetection() {
     
     // Handle device motion events
     function handleDeviceMotion(event) {
-        const current = event.accelerationIncludingGravity;
+        // Try to use pure acceleration data first, fallback to accelerationIncludingGravity
+        let current = null;
+        let accelerationType = '';
+        
+        if (event.acceleration && (event.acceleration.x !== null || event.acceleration.y !== null || event.acceleration.z !== null)) {
+            current = event.acceleration;
+            accelerationType = 'pure';
+        } else if (event.accelerationIncludingGravity) {
+            current = event.accelerationIncludingGravity;
+            accelerationType = 'withGravity';
+        }
+        
         const currentTime = new Date().getTime();
         
         // Debug display for motion values
@@ -357,6 +368,7 @@ function initShakeDetection() {
             // Only log occasionally to avoid overwhelming the UI
             if (currentTime % 1000 < 100) { // Log roughly every second
                 logDebug('Motion detected', {
+                    type: accelerationType,
                     x: current.x ? current.x.toFixed(2) : 'null',
                     y: current.y ? current.y.toFixed(2) : 'null',
                     z: current.z ? current.z.toFixed(2) : 'null'
@@ -387,8 +399,14 @@ function initShakeDetection() {
         // Log significant motion for debugging
         if (totalAcceleration > SHAKE_THRESHOLD * 0.5) {
             logDebug('Significant motion', { 
+                type: accelerationType,
                 total: totalAcceleration.toFixed(2), 
-                threshold: SHAKE_THRESHOLD 
+                threshold: SHAKE_THRESHOLD,
+                raw: {
+                    x: current.x ? current.x.toFixed(2) : 'null',
+                    y: current.y ? current.y.toFixed(2) : 'null',
+                    z: current.z ? current.z.toFixed(2) : 'null'
+                }
             });
         }
         
@@ -408,7 +426,16 @@ function initShakeDetection() {
         shakeCount++;
         document.getElementById('shake-count').textContent = shakeCount;
         
-        logDebug('Shake detected!', { count: shakeCount, magnitude: magnitude.toFixed(2) });
+        logDebug('Shake detected!', { 
+            count: shakeCount, 
+            magnitude: magnitude.toFixed(2),
+            accelerationType: accelerationType,
+            rawAcceleration: {
+                x: lastAcceleration.x.toFixed(2),
+                y: lastAcceleration.y.toFixed(2),
+                z: lastAcceleration.z.toFixed(2)
+            }
+        });
         
         // Flash the status indicator for visual feedback
         motionStatus.textContent = 'Shake!';
