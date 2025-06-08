@@ -1,104 +1,54 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Telegram Mini App</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    body {
-      font-family: sans-serif;
-      margin: 1em;
-    }
-    .service-list {
-      margin-bottom: 1em;
-    }
-    .service-item {
-      margin-bottom: 0.5em;
-    }
-    .btn {
-      padding: 0.5em 1em;
-      background-color: #0088cc;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subscription Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
-  <h1>Manage Subscriptions</h1>
-  <div>
-    <h2>Available Services</h2>
-    <div id="available-services" class="service-list"></div>
-  </div>
-  <div>
-    <h2>Your Subscriptions</h2>
-    <div id="user-subscriptions" class="service-list"></div>
-  </div>
-  <button class="btn" onclick="submitChanges()">Save Changes</button>
+    <div class="container">
+        <h1>Manage Your Subscriptions</h1>
+        <div id="app">
+            <div class="user-info">
+                <div id="user-name">Loading user info...</div>
+                <div id="theme-info">Theme: Loading...</div>
+            </div>
 
-  <script>
-    const tg = window.Telegram.WebApp;
-    tg.expand();
+            <div class="subscription-box">
+                <h3>Available Subscriptions</h3>
+                <form id="available-subscriptions-form">
+                    <div id="available-services">Loading subscriptions...</div>
+                </form>
+                <h3>User Subscriptions</h3>
+                <form id="user-subscriptions-form">
+                    <div id="user-subscriptions">Loading subscriptions...</div>
+                    <button type="submit" class="button">Save Preferences</button>
+                </form>
+            </div>
 
-    const userId = tg.initDataUnsafe.user?.id;
+            <div class="logs-container">
+                <div class="logs-header">
+                    <h3>Logs</h3>
+                    <div class="logs-controls">
+                        <label>
+                            <input type="checkbox" id="logs-autoscroll" checked> Auto-scroll
+                        </label>
+                        <button id="clear-logs" class="button secondary small">Clear</button>
+                    </div>
+                </div>
+                <div id="logs-area" class="logs-area">
+                    <div id="logs-content"></div>
+                </div>
+            </div>
 
-    // Mock data for now
-    const availableServices = ["ChatGPT Demo"];
-    const userSubscriptions = ["Github DEMO"];
-
-    const availableContainer = document.getElementById("available-services");
-    const userContainer = document.getElementById("user-subscriptions");
-
-    const selected = new Set(userSubscriptions);
-
-    function renderServices(container, services) {
-      container.innerHTML = "";
-      services.forEach(service => {
-        const label = document.createElement("label");
-        label.className = "service-item";
-
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = selected.has(service);
-        checkbox.onchange = () => {
-          if (checkbox.checked) selected.add(service);
-          else selected.delete(service);
-        };
-
-        label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(" " + service));
-        container.appendChild(label);
-      });
-    }
-
-    renderServices(availableContainer, availableServices);
-    renderServices(userContainer, userSubscriptions);
-
-    function submitChanges() {
-      const subscriptions = Array.from(selected);
-
-      // This would go to your Kotlin bot backend
-      fetch("/api/update-subscriptions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          userId: userId,
-          subscriptions: subscriptions
-        })
-      })
-      .then(res => res.json())
-      .then(res => {
-        tg.showAlert("Subscriptions updated!");
-      })
-      .catch(err => {
-        console.error(err);
-        tg.showAlert("Error updating subscriptions.");
-      });
-    }
-  </script>
+            <div class="button-container">
+                <button id="main-button" class="button">Main Button</button>
+                <button id="close-app" class="button secondary">Close App</button>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
 </body>
 </html>
