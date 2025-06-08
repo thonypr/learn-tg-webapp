@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="screen-orientation" content="portrait">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>Subscription Manager</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
@@ -34,6 +38,7 @@
             margin-bottom: 24px;
             padding-bottom: 16px;
             border-bottom: 1px solid var(--tg-theme-section-separator-color, #e0e0e0);
+            text-align: center;
         }
 
         .username {
@@ -64,22 +69,35 @@
         .subscription-item {
             display: flex;
             align-items: center;
-            padding: 12px 0;
+            padding: 12px;
             border-bottom: 1px solid var(--tg-theme-section-separator-color, #e0e0e0);
             cursor: pointer;
             user-select: none;
             -webkit-tap-highlight-color: transparent;
+            border-radius: 8px;
+            margin-bottom: 4px;
+            transition: all 0.2s ease;
         }
 
         .subscription-item:last-child {
             border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .subscription-item.selected {
+            background-color: var(--tg-theme-button-color, #3390ec);
+        }
+
+        .subscription-item.selected .subscription-text {
+            color: var(--tg-theme-button-text-color, #ffffff);
+        }
+
+        .subscription-item.selected .checkbox {
+            border-color: var(--tg-theme-button-text-color, #ffffff);
         }
 
         .subscription-item:active {
-            background-color: var(--tg-theme-section-separator-color, #e0e0e0);
-            border-radius: 8px;
-            margin: 0 -8px;
-            padding: 12px 8px;
+            transform: scale(0.98);
         }
 
         .checkbox {
@@ -94,7 +112,12 @@
         }
 
         .checkbox.checked {
-            background-color: var(--tg-theme-button-color, #3390ec);
+            background-color: var(--tg-theme-button-text-color, #ffffff);
+            border-color: var(--tg-theme-button-text-color, #ffffff);
+        }
+
+        .subscription-item.selected .checkbox.checked {
+            background-color: var(--tg-theme-button-text-color, #ffffff);
         }
 
         .checkbox.checked::after {
@@ -103,9 +126,13 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: var(--tg-theme-button-text-color, #ffffff);
+            color: var(--tg-theme-button-color, #3390ec);
             font-size: 12px;
             font-weight: bold;
+        }
+
+        .subscription-item.selected .checkbox.checked::after {
+            color: var(--tg-theme-button-color, #3390ec);
         }
 
         .subscription-text {
@@ -172,6 +199,14 @@
         tg.ready();
         tg.expand();
 
+        // Lock orientation to portrait
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('portrait').catch(() => {
+                // Fallback for browsers that don't support orientation lock
+                console.log('Orientation lock not supported');
+            });
+        }
+
         // Set theme colors
         document.documentElement.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
         document.documentElement.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#000000');
@@ -208,13 +243,15 @@
                 // Update UI
                 if (subscriptionState[subscription]) {
                     checkbox.classList.add('checked');
+                    this.classList.add('selected');
                 } else {
                     checkbox.classList.remove('checked');
+                    this.classList.remove('selected');
                 }
                 
-                // Trigger haptic feedback (medium vibration)
+                // Trigger haptic feedback (heavy vibration for checkbox)
                 if (tg.HapticFeedback) {
-                    tg.HapticFeedback.impactOccurred('medium');
+                    tg.HapticFeedback.impactOccurred('heavy');
                 }
             });
         });
@@ -224,9 +261,9 @@
         tg.MainButton.show();
 
         tg.MainButton.onClick(() => {
-            // High vibration feedback
+            // Rigid vibration feedback (notification type for strongest feedback)
             if (tg.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('heavy');
+                tg.HapticFeedback.notificationOccurred('error'); // Strongest available feedback
             }
 
             // Prepare alert message
