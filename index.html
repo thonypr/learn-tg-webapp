@@ -173,26 +173,18 @@
 
     <div class="subscriptions-box">
         <div class="subscriptions-title">Available Subscriptions</div>
-        
-        <div class="subscription-item" data-subscription="github">
-            <div class="checkbox" id="checkbox-github"></div>
-            <div class="subscription-text">Github DEMO</div>
-        </div>
-        
-        <div class="subscription-item" data-subscription="chatgpt">
-            <div class="checkbox" id="checkbox-chatgpt"></div>
-            <div class="subscription-text">ChatGPT Demo</div>
-        </div>
+        <!-- Subscriptions will be loaded dynamically -->
     </div>
 
     <div class="spacer"></div>
     <div class="main-button-placeholder"></div>
 
     <script>
-        let subscriptionState = {
-            github: false,
-            chatgpt: false
-        };
+        // Configuration - Update this with your Kotlin app URL
+        const API_BASE_URL = 'http://0.0.0.0:8000/api'; // Change this to your actual API URL
+        
+        let subscriptionState = {};
+        let availableSubscriptions = [];
 
         // Initialize Telegram WebApp
         const tg = window.Telegram.WebApp;
@@ -231,63 +223,166 @@
         });
         dateElement.textContent = currentDate;
 
-        // Handle checkbox clicks
-        document.querySelectorAll('.subscription-item').forEach(item => {
-            item.addEventListener('click', function() {
-                const subscription = this.dataset.subscription;
-                const checkbox = this.querySelector('.checkbox');
+        // Load subscriptions from API with user's current status
+        async function loadSubscriptions() {
+            try {
+                // TODO: avoid hardcoding
+                const chatId = tg.initDataUnsafe?.user?.id || 'unknown_user';635
+
+                const response = await fetch(`${API_BASE_URL}/subscriptions/mysubscriptions?chatId=${chatId}`);
+                const data = await response.json();
                 
-                // Toggle state
-                subscriptionState[subscription] = !subscriptionState[subscription];
-                
-                // Update UI
-                if (subscriptionState[subscription]) {
-                    checkbox.classList.add('checked');
-                    this.classList.add('selected');
+                if (data.success && data.subscriptions) {
+                    availableSubscriptions = data.subscriptions;
+                    renderSubscriptions();
                 } else {
-                    checkbox.classList.remove('checked');
-                    this.classList.remove('selected');
+                    throw new Error(data.message || 'Failed to load subscriptions');
+                }
+            } catch (error) {
+                console.error('Error loading subscriptions:', error);
+                tg.showAlert(`Failed to load subscriptions: ${error.message}`);
+                
+                // Fallback to basic API without user context
+                try {
+                    const response = await fetch(`${API_BASE_URL}/subscriptions`);
+                    const data = await response.json();
+                    if (data.success && data.subscriptions) {
+                        availableSubscripstions = data.subscriptions;
+                        renderSubscriptions();
+                    }
+                } catch (fallbackError) {
+                    // Final fallback to hardcoded subscriptions
+                    availableSubscriptions = [
+                        { id: 'github', name: 'Github DEMO', subscribed: false },
+                        { id: 'chatgpt', name: 'ChatGPT Demo', subscribed: false }
+                    ];
+                    renderSubscriptions();
+                }
+            }
+        }
+
+        // Render subscriptions dynamically
+        function renderSubscriptions() {
+            const subscriptionsContainer = document.querySelector('.subscriptions-box');
+            
+            // Clear existing items (keep title)
+            const existingItems = subscriptionsContainer.querySelectorAll('.subscription-item');
+            existingItems.forEach(item => item.remove());
+            
+            // Initialize state based on database
+            availableSubscriptions.forEach(sub => {
+                subscriptionState[sub.id] = sub.subscribed || false;
+            });
+            
+            // Create new items
+            availableSubscriptions.forEach(subscription => {
+                const itemElement = document.createElement('div');
+                itemElement.className = 'subscription-item';
+                itemElement.dataset.subscription = subscription.id;
+                
+                // Add selected class if already subscribed
+                if (subscription.subscribed) {
+                    itemElement.classList.add('selected');
                 }
                 
-                // Trigger haptic feedback (heavy vibration for checkbox)
-                if (tg.HapticFeedback) {
-                    tg.HapticFeedback.impactOccurred('heavy');
-                }
+                itemElement.innerHTML = `
+                    <div class="checkbox ${subscription.subscribed ? 'checked' : ''}" id="checkbox-${subscription.id}"></div>
+                    <div class="subscription-text">${subscription.name}</div>
+                `;
+                
+                subscriptionsContainer.appendChild(itemElement);
             });
-        });
+            
+            // Re-attach event listeners
+            attachEventListeners();
+        }
+
+        // Attach event listeners to subscription items
+        function attachEventListeners() {
+            document.querySelectorAll('.subscription-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const subscription = this.dataset.subscription;
+                    const checkbox = this.querySelector('.checkbox');
+                    
+                    // Toggle state
+                    subscriptionState[subscription] = !subscriptionState[subscription];
+                    
+                    // Update UI
+                    if (subscriptionState[subscription]) {
+                        checkbox.classList.add('checked');
+                        this.classList.add('selected');
+                    } else {
+                        checkbox.classList.remove('checked');
+                        this.classList.remove('selected');
+                    }
+                    
+                    // Trigger haptic feedback
+                    if (tg.HapticFeedback) {
+                        tg.HapticFeedback.impactOccurred('heavy');
+                    }
+                });
+            });
+        }
 
         // Setup main button
         tg.MainButton.text = 'Save Subscriptions';
         tg.MainButton.show();
 
-        tg.MainButton.onClick(() => {
-            // Rigid vibration feedback (notification type for strongest feedback)
+        tg.MainButton.onClick(async () => {
+            // Rigid vibration feedback
             if (tg.HapticFeedback) {
-                tg.HapticFeedback.notificationOccurred('error'); // Strongest available feedback
+                tg.HapticFeedback.notificationOccurred('error');
             }
 
-            // Prepare alert message
-            const selectedSubscriptions = Object.keys(subscriptionState)
-                .filter(key => subscriptionState[key])
-                .map(key => {
-                    if (key === 'github') return 'Github DEMO';
-                    if (key === 'chatgpt') return 'ChatGPT Demo';
-                    return key;
+            try {
+                // Prepare data for API
+                const selectedSubscriptions = Object.keys(subscriptionState)
+                    .filter(key => subscriptionState[key]);
+                
+                // const chatId = tg.initDataUnsafe?.user?.id || 0;
+                const chatId = 235486635;
+
+                // Save to API
+                const response = await fetch(`${API_BASE_URL}/subscriptions/save`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        chatId: chatId,
+                        selectedSubscriptions: selectedSubscriptions
+                    })
                 });
 
-            let alertMessage;
-            if (selectedSubscriptions.length === 0) {
-                alertMessage = 'No subscriptions selected';
-            } else {
-                alertMessage = `Saved subscriptions:\n${selectedSubscriptions.join('\n')}`;
+                const result = await response.json();
+
+                if (result.success) {
+                    // Prepare alert message for successful save
+                    const selectedNames = selectedSubscriptions.map(id => {
+                        const subscription = availableSubscriptions.find(sub => sub.id === id);
+                        return subscription ? subscription.name : id;
+                    });
+
+                    let alertMessage;
+                    if (selectedNames.length === 0) {
+                        alertMessage = 'No subscriptions selected and saved';
+                    } else {
+                        alertMessage = `Successfully saved subscriptions:\n${selectedNames.join('\n')}`;
+                    }
+
+                    tg.showAlert(alertMessage);
+                } else {
+                    throw new Error(result.message || 'Failed to save subscriptions');
+                }
+
+            } catch (error) {
+                console.error('Error saving subscriptions:', error);
+                tg.showAlert(`Error saving subscriptions: ${error.message}`);
             }
-
-            // Show alert
-            tg.showAlert(alertMessage);
-
-            // Here you would normally make an API request to save the state
-            console.log('Subscription state saved:', subscriptionState);
         });
+
+        // Initialize the app
+        loadSubscriptions();
 
         // Prevent zooming
         document.addEventListener('touchmove', function(event) {
